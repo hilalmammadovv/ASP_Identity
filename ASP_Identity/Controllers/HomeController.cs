@@ -37,10 +37,28 @@ namespace ASP_Identity.Controllers
             return View();
         }
 
+
+
+        public IActionResult SignIn()
+        {
+            return View();
+        }
+
+
+
+
+
+
         [HttpPost]
         public async Task<IActionResult> SignUp(SignUpVM request)
         {
-           var identityResult = await _UserManager.CreateAsync(new () { UserName = request.UserName, PhoneNumber=request.Phone,Email=request.Email }, request.PasswordConfirm);
+           
+
+            if (!ModelState.IsValid) { 
+            
+                return View();            
+            }
+var identityResult = await _UserManager.CreateAsync(new () { UserName = request.UserName, PhoneNumber=request.Phone,Email=request.Email }, request.PasswordConfirm);
 
             if (identityResult.Succeeded)
             {
