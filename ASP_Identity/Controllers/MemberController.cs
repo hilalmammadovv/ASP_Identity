@@ -1,7 +1,13 @@
-﻿using ASP_Identity.Models;
+﻿
+using System.Security.Claims;
+using ASP_Identity.Extensions;
+using ASP_Identity.Models;
+using ASP_Identity.ViewModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.Extensions.FileProviders;
 
 namespace ASP_Identity.Controllers;
 
@@ -10,15 +16,29 @@ public class MemberController : Controller
 {
 
     private readonly SignInManager<AppUser> _signInManager;
+    private readonly UserManager<AppUser> _userManager;
+    private readonly IFileProvider _fileProvider;
 
-    public MemberController(SignInManager<AppUser> signInManager)
+    public MemberController(SignInManager<AppUser> signInManager, UserManager<AppUser> userManager, IFileProvider fileProvider)
     {
         _signInManager = signInManager;
+        _userManager = userManager;
+        _fileProvider = fileProvider;
     }
 
-    public IActionResult Index()
+    public async Task<IActionResult> Index()
     {
-        return View();
+        var currentUser = await _userManager.FindByNameAsync(User.Identity!.Name!);
+
+        var userViewModel = new UserViewModel
+        {
+            Email = currentUser!.Email,
+            UserName = currentUser.UserName,
+            PhoneNumber = currentUser.PhoneNumber,
+            PictureUrl = currentUser.Picture
+        };
+
+        return View(userViewModel);
     }
 
 
@@ -32,4 +52,155 @@ public class MemberController : Controller
         return RedirectToAction("Index", "Home");
 
     }
+
+    public IActionResult PasswordChange()
+    {
+        return View();
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> PasswordChange(PasswordChangeViewModel request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View();
+        }
+
+        var currentUser = (await _userManager.FindByNameAsync(User.Identity!.Name!))!;
+
+        var checkOldPassword = await _userManager.CheckPasswordAsync(currentUser, request.PasswordOld);
+
+        if (!checkOldPassword)
+        {
+            ModelState.AddModelError(string.Empty, "Kohne sifreniz yalnisdir");
+            return View();
+        }
+
+        var resultChangePassword = await _userManager.ChangePasswordAsync(currentUser, request.PasswordOld, request.PasswordNew);
+
+        if (!resultChangePassword.Succeeded)
+        {
+            ModelState.AddModelErrorList(resultChangePassword.Errors.Select(x=>x.Description).ToList());
+            return View();
+        }
+
+        await _userManager.UpdateSecurityStampAsync(currentUser);
+        await _signInManager.SignOutAsync();
+        await _signInManager.PasswordSignInAsync(currentUser, request.PasswordNew, true, false);
+
+        TempData["SuccessMessage"] = "Sifreniz ugurla deyisdirldi";
+
+        return View();
+    }
+
+
+
+    public async Task<IActionResult> UserEdit()
+    {
+        ViewBag.genderList = new SelectList(Enum.GetNames(typeof(Gender)));
+        var currentUser = (await _userManager.FindByNameAsync(User.Identity!.Name!))!;
+
+        var userEditViewModel = new UserEditViewModel()
+        {
+            UserName = currentUser.UserName!,
+            Email = currentUser.Email!,
+            Phone = currentUser.PhoneNumber!,
+            BirthDate = currentUser.BirthDate,
+            City = currentUser.City,
+            Gender = currentUser.Gender,
+        };
+
+        return View(userEditViewModel);
+    }
+
+
+
+
+
+
+
+
+
+
+    [HttpPost]
+    public async Task<IActionResult> UserEdit(UserEditViewModel request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View();
+        }
+
+        var currentUser = await _userManager.FindByNameAsync(User.Identity!.Name!);
+
+        currentUser.UserName = request.UserName;
+        currentUser.Email = request.Email;
+        currentUser.PhoneNumber = request.Phone;
+        currentUser.BirthDate = request.BirthDate;
+        currentUser.City = request.City;
+        currentUser.Gender = request.Gender;
+
+        if (request.Picture != null && request.Picture.Length > 0)
+        {
+            var wwwrootFolder = _fileProvider.GetDirectoryContents("wwwroot");
+
+            string randomFileName = $"{Guid.NewGuid().ToString()}{Path.GetExtension(request.Picture.FileName)}";
+
+            var newPicturePath = Path.Combine(wwwrootFolder!.First(x => x.Name == "userpictures").PhysicalPath!, randomFileName);
+
+            using var stream = new FileStream(newPicturePath, FileMode.Create);
+
+            await request.Picture.CopyToAsync(stream);
+
+            currentUser.Picture = randomFileName;
+        }
+
+        var updateToUserResult = await _userManager.UpdateAsync(currentUser);
+
+        if (!updateToUserResult.Succeeded)
+        {
+            ModelState.AddModelErrorList(
+                updateToUserResult.Errors.Select(x => x.Description).ToList()
+            );
+            return View();
+        }
+
+
+        await _userManager.UpdateSecurityStampAsync(currentUser);
+        await _signInManager.SignOutAsync();
+
+
+        if (request.BirthDate.HasValue)
+        {
+            await _signInManager.SignInWithClaimsAsync(currentUser, true, new[] { new Claim("birthdate", currentUser.BirthDate!.Value.ToString()) });
+        }
+
+        else
+        {
+            await _signInManager.SignInAsync(currentUser, true);
+        }
+
+
+
+
+
+
+
+
+        TempData["SuccessMessage"] = "Istifadeci melumatlari ugurla guncellenib";
+
+        var userEditViewModel = new UserEditViewModel()
+        {
+            UserName = currentUser.UserName!,
+            Email = currentUser.Email!,
+            Phone = currentUser.PhoneNumber!,
+            BirthDate = currentUser.BirthDate,
+            City = currentUser.City,
+            Gender = currentUser.Gender,
+        };
+
+        return View(userEditViewModel);
+    }
+
+
+
 }
