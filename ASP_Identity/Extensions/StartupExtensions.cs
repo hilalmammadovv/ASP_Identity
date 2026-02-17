@@ -1,6 +1,7 @@
 ﻿using ASP_Identity.CustomValidations;
 using ASP_Identity.Localizations;
 using ASP_Identity.Models;
+using Microsoft.AspNetCore.Identity;
 
 namespace ASP_Identity.Extensions;
 
@@ -8,7 +9,17 @@ public static class StartupExtensions
 {
     public static void AddIdentityWithExt(this IServiceCollection services )
     {
-     services.AddIdentity<AppUser, AppRole>(
+        services.Configure<DataProtectionTokenProviderOptions>(opt =>
+        {
+
+            opt.TokenLifespan = TimeSpan.FromHours(2);
+        });
+
+
+
+
+
+        services.AddIdentity<AppUser, AppRole>(
   options =>
   {
 
@@ -24,8 +35,17 @@ public static class StartupExtensions
 
 
 
+      options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(3);
+      options.Lockout.MaxFailedAccessAttempts = 3;
 
-  }).AddPasswordValidator<PasswordValidator>().AddUserValidator<UserValidator>().AddErrorDescriber<LocalizationIdentityErrorDescriber>().AddEntityFrameworkStores<AppDbContext>();
+
+
+
+
+  }).AddPasswordValidator<PasswordValidator>().AddUserValidator<UserValidator>().AddErrorDescriber<LocalizationIdentityErrorDescriber>().AddDefaultTokenProviders().AddEntityFrameworkStores<AppDbContext>();
+
+
+
     }
 
 
